@@ -1,0 +1,136 @@
+<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Go (囲碁)</title>
+<style>
+body{margin:0;background:#3a2716;color:#f3e3c3;font-family:system-ui,sans-serif;text-align:center}
+h1{margin:10px 0 4px;font-size:22px}
+.p{background:#5a3d22;border:1px solid #8a6335;border-radius:10px;padding:10px;margin:8px auto;max-width:640px}
+label{display:inline-block;margin:4px 8px}
+select,button{font-size:16px;padding:8px 12px;border-radius:8px;border:1px solid #8a6335;background:#e8c98a;color:#2a1a0a;margin:3px}
+button:disabled{opacity:.4}
+canvas{touch-action:manipulation;border-radius:6px;box-shadow:0 4px 14px #000a}
+#st{min-height:22px;font-weight:600;margin:6px}
+#ca{font-size:14px;opacity:.85}
+.hide{display:none}
+</style></head><body>
+<h1>Go (囲碁)</h1>
+<div class="p" id="setup">
+<label>Modus <select id="mo"><option value="c">Mensch gegen CPU</option><option value="h">Mensch gegen Mensch</option></select></label>
+<label>Brett <select id="sz"><option value="9">9 × 9</option><option value="13">13 × 13</option><option value="19">19 × 19</option></select></label>
+<span id="co1"><label>CPU-Stärke <select id="lv"><option value="1">Leicht</option><option value="2" selected>Mittel</option><option value="3">Schwer</option></select></label>
+<label>Deine Farbe <select id="co"><option value="1">Schwarz</option><option value="2">Weiß</option></select></label></span><br>
+<button id="go">Spiel starten</button>
+<p style="font-size:13px;margin:6px">Japanische Zählung, Komi 6,5 für Weiß, Ko-Regel (Superko)</p>
+</div>
+<div id="game" class="hide">
+<div id="st"></div>
+<canvas id="cv"></canvas>
+<div id="ca"></div>
+<div>
+<button id="bp">Passen</button><button id="bu">Zurück</button><button id="bn">Neues Spiel</button>
+</div>
+<div id="sc" class="p hide">
+<div id="stx" style="margin-bottom:6px"></div>
+<button id="c0">Bestätigen</button><button id="c1">Schwarz bestätigt</button><button id="c2">Weiß bestätigt</button><button id="cx">Widerspruch – weiterspielen</button>
+</div>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+let N,nb,mk,mk2,stamp=0,hist,G,ph,vs,hu,cp,lv,busy=0,dead=null,own=null,sB=0,sW=0,cf=[0,0,0],M,R;
+const cv=$('cv'),x=cv.getContext('2d'),f=n=>String(n).replace('.',',');
+function mkNb(n){nb=[];for(let y=0;y<n;y++)for(let u=0;u<n;u++){const a=[];if(u>0)a.push(y*n+u-1);if(u<n-1)a.push(y*n+u+1);if(y>0)a.push((y-1)*n+u);if(y<n-1)a.push((y+1)*n+u);nb.push(a)}mk=new Int32Array(n*n);mk2=new Int32Array(n*n)}
+function grp(b,i){const c=b[i],st=[i],libs=[];stamp++;mk[i]=stamp;for(let k=0;k<st.length;k++)for(const j of nb[st[k]]){const v=b[j];if(v===0){if(mk2[j]!==stamp){mk2[j]=stamp;libs.push(j)}}else if(v===c&&mk[j]!==stamp){mk[j]=stamp;st.push(j)}}return{st,libs}}
+function play(b,p,c,ko){if(b[p]||p===ko)return null;const e=3-c;b[p]=c;const cap=[];for(const j of nb[p])if(b[j]===e){const g=grp(b,j);if(!g.libs.length)for(const s of g.st){b[s]=0;cap.push(s)}}
+const g=grp(b,p);if(!g.libs.length){b[p]=0;for(const s of cap)b[s]=e;return null}
+return{cap,single:(g.st.length===1&&g.libs.length===1&&cap.length===1)?cap[0]:-1}}
+function eye(b,p,c){for(const j of nb[p])if(b[j]!==c)return false;return true}
+function owners(b){const o=new Int8Array(b.length),seen=new Uint8Array(b.length);for(let i=0;i<b.length;i++){if(b[i]||seen[i])continue;const st=[i];seen[i]=1;let t=0;for(let k=0;k<st.length;k++)for(const j of nb[st[k]]){if(!b[j]){if(!seen[j]){seen[j]=1;st.push(j)}}else t|=b[j]}const w=t===1?1:t===2?2:0;for(const s of st)o[s]=w}return o}
+function playout(b0,c,ko,last,maxM){const b=b0.slice(),n=b.length;let ps=0;
+for(let m=0;m<maxM&&ps<2;m++){let r=null,mv=-1;
+if(last>=0){for(const j of nb[last])if(b[j]===3-c){const g=grp(b,j);if(g.libs.length===1){mv=g.libs[0];break}}
+if(mv<0)for(const j of nb[last])if(b[j]===c){const g=grp(b,j);if(g.libs.length===1){mv=g.libs[0];break}}
+if(mv>=0)r=play(b,mv,c,ko)}
+if(!r){for(let k=0;k<12&&!r;k++){mv=Math.random()*n|0;if(!b[mv]&&!eye(b,mv,c))r=play(b,mv,c,ko)}
+if(!r){const s0=Math.random()*n|0;for(let k=0;k<n&&!r;k++){mv=(s0+k)%n;if(!b[mv]&&!eye(b,mv,c))r=play(b,mv,c,ko)}}}
+if(r){ko=r.single;last=mv;ps=0}else{ko=-1;last=-1;ps++}c=3-c}
+const o=owners(b);let sc=-7;for(let i=0;i<n;i++){const v=b[i]||o[i];if(v===1)sc++;else if(v===2)sc--}return{b,sc}}
+function rep(t){const k=t.join('');return hist.some(h=>h.key===k)}
+// Heuristik: bewertet alle legalen Züge
+function cands(b,c,ko,last){const e=3-c,o=owners(b),out=[],lx=last%N,ly=last/N|0;
+for(let p=0;p<b.length;p++){if(b[p]||eye(b,p,c))continue;const t=b.slice(),r=play(t,p,c,ko);if(!r||rep(t))continue;
+let s=r.cap.length*10;
+for(const j of nb[p]){if(b[j]===c){const g=grp(b,j);if(g.libs.length===1)s+=6+2*g.st.length}else if(b[j]===e){const g=grp(b,j);if(g.libs.length===2)s+=2}}
+for(const j of nb[p])if(t[j]===e){const g=grp(t,j);if(g.libs.length===1)s+=4+g.st.length}
+const g=grp(t,p);s+=Math.min(g.libs.length,4);if(g.libs.length===1&&!r.cap.length)s-=15+2*g.st.length;
+const px=p%N,py=p/N|0,d=Math.min(px,py,N-1-px,N-1-py);s+=[-5,-1,3,3,1][d]??.5;
+if(o[p]===c)s-=12;else if(o[p]===e)s-=6;
+if(last>=0){const md=Math.abs(px-lx)+Math.abs(py-ly);s+=md<=2?3:md<=4?1:0}
+out.push({p,s})}
+return out.sort((a,b)=>b.s-a.s)}
+function deadGroups(b){const Mn=N==9?250:N==13?120:50,sv=new Float32Array(b.length);
+for(let m=0;m<Mn;m++){const r=playout(b,1+(m&1),-1,-1,N*N*2);for(let i=0;i<b.length;i++)if(b[i]&&r.b[i]===b[i])sv[i]++}
+const d=new Uint8Array(b.length),seen=new Uint8Array(b.length);
+for(let i=0;i<b.length;i++){if(!b[i]||seen[i])continue;const g=grp(b,i);let a=0;for(const s of g.st){seen[s]=1;a+=sv[s]}if(a/g.st.length/Mn<.35)for(const s of g.st)d[s]=1}return d}
+// Spielablauf
+function start(){N=+$('sz').value;vs=$('mo').value==='c';hu=+$('co').value;cp=3-hu;lv=+$('lv').value;mkNb(N);
+const b=new Int8Array(N*N);G={b,ko:-1,turn:1,caps:[0,0,0],last:-1,pass:0,key:b.join('')};hist=[G];ph='play';busy=0;dead=null;own=null;
+$('setup').classList.add('hide');$('game').classList.remove('hide');size();after()}
+function size(){if(!N)return;const s=Math.min(innerWidth-16,640),d=devicePixelRatio||1;cv.style.width=cv.style.height=s+'px';cv.width=cv.height=Math.round(s*d);draw()}
+function commit(g){hist.push(g);G=g;after()}
+function after(){draw();if(G.pass>=2&&ph==='play')return score();ui();if(ph==='play'&&vs&&G.turn===cp)cpuMove()}
+function doPass(){busy=0;commit({b:G.b,ko:-1,turn:3-G.turn,caps:G.caps.slice(),last:-1,pass:G.pass+1,key:G.key})}
+function doMove(p,c,r,t){const caps=G.caps.slice();caps[c]+=r.cap.length;busy=0;commit({b:t,ko:r.single,turn:3-c,caps,last:p,pass:0,key:t.join('')})}
+function human(p){if(busy||ph!=='play'||(vs&&G.turn!==hu))return;const c=G.turn,t=G.b.slice(),r=play(t,p,c,G.ko);
+if(!r||rep(t)){$('ca').textContent='Zug nicht erlaubt (Selbstmord oder Ko).';return}$('ca').textContent='';doMove(p,c,r,t)}
+function cpuMove(){busy=1;ui();$('st').textContent='CPU denkt …';setTimeout(()=>{const c=G.turn,b=G.b,L=cands(b,c,G.ko,G.last),best=L[0];
+if(!best||best.s<=0||(G.pass>0&&best.s<=4)||hist.length>N*N*2)return doPass();
+const fin=p=>{const t=b.slice(),r=play(t,p,c,G.ko);doMove(p,c,r,t)};
+if(lv<3){const nz=lv==1?20:3;let bp=best.p,bv=-1e9;for(const o of L){const v=o.s+Math.random()*nz;if(v>bv){bv=v;bp=o.p}}return fin(bp)}
+const K=N==9?10:N==13?12:14,C=L.filter(o=>o.s>-4).slice(0,K),nn=C.map(()=>2),ww=C.map(o=>2*(.5+.4*Math.tanh(o.s/15)));let tot=C.length*2;
+const end=Date.now()+(N==9?1500:N==13?2200:3200);
+(function it(){const t0=Date.now();while(Date.now()-t0<14&&Date.now()<end){let bi=0,bv=-1;
+for(let i=0;i<C.length;i++){const v=ww[i]/nn[i]+.8*Math.sqrt(Math.log(tot)/nn[i]);if(v>bv){bv=v;bi=i}}
+const t=b.slice(),r=play(t,C[bi].p,c,G.ko),sc=playout(t,3-c,r.single,C[bi].p,N*N*2).sc;if((c===1)===(sc>0))ww[bi]++;nn[bi]++;tot++}
+if(Date.now()<end)setTimeout(it,0);else{let bi=0;for(let i=1;i<C.length;i++)if(nn[i]>nn[bi])bi=i;fin(C[bi].p)}})()},30)}
+function undo(){if(!vs||busy||ph!=='play')return;let i=hist.length-2;while(i>=0&&hist[i].turn!==hu)i--;if(i<0)return;hist.length=i+1;G=hist[i];$('ca').textContent='';draw();ui()}
+// Zählung (japanisch): Gebiet + Gefangene (+ Komi)
+function score(){ph='score';busy=1;cf=[0,0,0];$('st').textContent='Berechne tote Steine …';setTimeout(()=>{dead=deadGroups(G.b);calc();busy=0;draw();ui()},30)}
+function calc(){const bd=G.b.map((v,i)=>dead[i]?0:v),o=owners(bd),t=[0,0,0],pr=[0,G.caps[1],G.caps[2]];
+for(let i=0;i<bd.length;i++){if(dead[i])pr[3-G.b[i]]++;if(!bd[i]&&o[i])t[o[i]]++}
+own=o;sB=t[1]+pr[1];sW=t[2]+pr[2]+6.5}
+function conf(k){if(k===0||(cf[k]=1,cf[1]&&cf[2]))ph='end';ui();draw()}
+function objection(){ph='play';dead=null;own=null;const g={...G,pass:0,caps:G.caps.slice()};hist.push(g);G=g;after()}
+function ui(){const e=$,pl=ph==='play';
+e('bp').disabled=busy||!pl||(vs&&G.turn!==hu);
+let ok=false;if(vs&&pl&&!busy){let i=hist.length-2;while(i>=0&&hist[i].turn!==hu)i--;ok=i>=0}
+e('bu').classList.toggle('hide',!vs);e('bu').disabled=!ok;
+e('sc').classList.toggle('hide',ph!=='score'&&ph!=='end'||busy);
+const sc=ph==='score';e('c0').classList.toggle('hide',!sc||!vs);e('c1').classList.toggle('hide',!sc||vs);e('c2').classList.toggle('hide',!sc||vs);e('cx').classList.toggle('hide',!sc);
+e('c1').disabled=!!cf[1];e('c2').disabled=!!cf[2];
+const nm=c=>c===1?'Schwarz ⚫':'Weiß ⚪';
+if(ph==='play'&&!busy)e('st').textContent='Am Zug: '+nm(G.turn)+(vs?(G.turn===hu?' (du)':' (CPU)'):'')+(G.pass?' – Gegner hat gepasst':'');
+if(ph==='score'||ph==='end'){const d=sB-sW,w=d>0?'Schwarz ⚫':'Weiß ⚪';
+e('st').textContent=ph==='end'?'Ergebnis: '+w+' gewinnt mit '+f(Math.abs(d))+' Punkten':'Zählung: Tote Steine sind rot markiert. Bestätigen oder Widerspruch?';
+e('stx').textContent='Schwarz '+f(sB)+' (Gebiet + Gefangene)  –  Weiß '+f(sW)+' (inkl. Komi 6,5)'}
+e('ca').textContent=ph==='play'?'Gefangen – Schwarz: '+G.caps[1]+'  Weiß: '+G.caps[2]:''}
+// Zeichnen
+function stone(px,py,v){x.save();x.shadowColor='rgba(0,0,0,.45)';x.shadowBlur=R*.3;x.shadowOffsetY=R*.12;const g=x.createRadialGradient(px-R*.35,py-R*.35,R*.1,px,py,R);
+if(v===1){g.addColorStop(0,'#777');g.addColorStop(1,'#000')}else{g.addColorStop(0,'#fff');g.addColorStop(1,'#cfc7b8')}
+x.fillStyle=g;x.beginPath();x.arc(px,py,R,0,7);x.fill();x.restore()}
+function draw(){if(!G)return;const w=cv.width;M=w/(N+1);R=M*.46;
+const g=x.createLinearGradient(0,0,w,w);g.addColorStop(0,'#e3bb68');g.addColorStop(.5,'#d4a852');g.addColorStop(1,'#c8994a');x.fillStyle=g;x.fillRect(0,0,w,w);
+x.strokeStyle='rgba(110,60,15,.09)';x.lineWidth=1;for(let k=0;k<45;k++){const y=k*w/45;x.beginPath();x.moveTo(0,y);for(let u=0;u<=w;u+=20)x.lineTo(u,y+Math.sin(u/60+k)*3);x.stroke()}
+x.strokeStyle='#3a2410';x.lineWidth=Math.max(1,w/450);x.beginPath();for(let i=1;i<=N;i++){x.moveTo(i*M,M);x.lineTo(i*M,N*M);x.moveTo(M,i*M);x.lineTo(N*M,i*M)}x.stroke();
+const a=N==9?[2,6]:N==13?[3,9]:[3,9,15],pts=[];for(const u of a)for(const v of a)pts.push([u,v]);if(N<19)pts.push([(N-1)/2,(N-1)/2]);
+x.fillStyle='#3a2410';for(const[u,v]of pts){x.beginPath();x.arc((u+1)*M,(v+1)*M,M*.1,0,7);x.fill()}
+for(let i=0;i<N*N;i++){const v=G.b[i],px=(i%N+1)*M,py=((i/N|0)+1)*M,d=dead&&dead[i];
+if(own&&(!v||d)&&own[i]){const s=M*.2;x.fillStyle=own[i]===1?'#000':'#fff';x.strokeStyle='#555';x.lineWidth=1;x.fillRect(px-s,py-s,2*s,2*s);x.strokeRect(px-s,py-s,2*s,2*s)}
+if(!v)continue;x.globalAlpha=d?.45:1;stone(px,py,v);x.globalAlpha=1;
+if(d){x.strokeStyle='#c00';x.lineWidth=3;x.beginPath();x.moveTo(px-R/2,py-R/2);x.lineTo(px+R/2,py+R/2);x.moveTo(px+R/2,py-R/2);x.lineTo(px-R/2,py+R/2);x.stroke()}}
+if(G.last>=0){const px=(G.last%N+1)*M,py=((G.last/N|0)+1)*M;x.strokeStyle=G.b[G.last]===1?'#fff':'#000';x.lineWidth=2;x.beginPath();x.arc(px,py,R*.45,0,7);x.stroke()}}
+cv.addEventListener('click',e=>{if(ph!=='play')return;const r=cv.getBoundingClientRect(),k=cv.width/r.width,ix=Math.round((e.clientX-r.left)*k/M-1),iy=Math.round((e.clientY-r.top)*k/M-1);
+if(ix<0||iy<0||ix>=N||iy>=N)return;human(iy*N+ix)});
+$('mo').onchange=()=>$('co1').classList.toggle('hide',$('mo').value==='h');
+$('go').onclick=start;$('bp').onclick=()=>{if(!busy&&ph==='play'&&(!vs||G.turn===hu))doPass()};$('bu').onclick=undo;
+$('bn').onclick=()=>{busy=0;N=0;G=null;$('game').classList.add('hide');$('setup').classList.remove('hide')};
+$('c0').onclick=()=>conf(0);$('c1').onclick=()=>conf(1);$('c2').onclick=()=>conf(2);$('cx').onclick=objection;
+addEventListener('resize',size);
+</script></body></html>
